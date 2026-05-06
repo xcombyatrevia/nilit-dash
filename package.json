@@ -5,8 +5,11 @@
 },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
+    "jspdf": "latest",
     "typescript": "latest",
+    "@vitejs/plugin-react": "latest"    
+    "html2canvas": "latest",
+    "vite": "latest",
     "react": "latest",
     "react-dom": "latest",
     "recharts": "latest",
