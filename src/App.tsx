@@ -635,6 +635,47 @@ function getPdfSectionTitle(section, fallback) {
   return section.getAttribute("data-pdf-title") || fallback;
 }
 
+function getPdfAvoidBreakRanges(section, canvas) {
+  const sectionRect = section.getBoundingClientRect();
+  const scale = canvas.width / Math.max(section.scrollWidth, 1);
+
+  return Array.from(section.querySelectorAll("[data-pdf-avoid-break]"))
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        top: Math.max(0, Math.floor((rect.top - sectionRect.top) * scale)),
+        bottom: Math.max(0, Math.ceil((rect.bottom - sectionRect.top) * scale)),
+      };
+    })
+    .filter((range) => range.bottom > range.top)
+    .sort((a, b) => a.top - b.top);
+}
+
+function getSafePdfSliceHeight({ sourceY, proposedSliceHeight, canvasHeight, avoidRanges }) {
+  const proposedBottom = Math.min(sourceY + proposedSliceHeight, canvasHeight);
+  if (proposedBottom >= canvasHeight) return canvasHeight - sourceY;
+
+  const minimumSliceHeight = proposedSliceHeight * 0.45;
+  const crossingRange = avoidRanges.find((range) => {
+    const startsBeforeBreak = range.top < proposedBottom;
+    const endsAfterBreak = range.bottom > proposedBottom;
+    const isRelevant = range.bottom > sourceY;
+    return startsBeforeBreak && endsAfterBreak && isRelevant;
+  });
+
+  if (!crossingRange) return proposedSliceHeight;
+
+  const breakBeforeElement = crossingRange.top - sourceY;
+  if (breakBeforeElement >= minimumSliceHeight) return Math.max(1, Math.floor(breakBeforeElement));
+
+  const breakAfterElement = crossingRange.bottom - sourceY;
+  if (breakAfterElement <= proposedSliceHeight * 1.15 && crossingRange.bottom < canvasHeight) {
+    return Math.max(1, Math.ceil(breakAfterElement));
+  }
+
+  return proposedSliceHeight;
+}
+
 function formatNewsletterSendInfo(newsletter) {
   if (!newsletter) return "Send date: —";
 
@@ -1461,6 +1502,7 @@ export default function App() {
         }
 
         const pageContentHeightInCanvas = Math.floor((pageHeight - margin * 2) * (canvas.width / contentWidth));
+        const avoidBreakRanges = getPdfAvoidBreakRanges(section, canvas);
         let sourceY = 0;
         let pageInSection = 1;
 
@@ -1471,7 +1513,12 @@ export default function App() {
           if (!isFirstPage) pdf.addPage();
           isFirstPage = false;
 
-          const sliceHeight = Math.min(pageContentHeightInCanvas, canvas.height - sourceY);
+          const sliceHeight = getSafePdfSliceHeight({
+            sourceY,
+            proposedSliceHeight: Math.min(pageContentHeightInCanvas, canvas.height - sourceY),
+            canvasHeight: canvas.height,
+            avoidRanges: avoidBreakRanges,
+          });
           const sliceCanvas = document.createElement("canvas");
           sliceCanvas.width = canvas.width;
           sliceCanvas.height = sliceHeight;
@@ -1724,7 +1771,7 @@ const PdfExportRoot = React.forwardRef(function PdfExportRoot({
 
 function PdfSectionHeader({ title, subtitle }) {
   return (
-    <div className="mb-5 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+    <div data-pdf-avoid-break className="mb-5 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
       <div className="flex items-center gap-5">
         <NilitLogo />
         <div>
@@ -2100,7 +2147,7 @@ function PostCardsList({ posts }) {
 
       <div className="grid gap-5">
         {posts.map((post) => (
-          <article key={post.id} className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[250px_1fr]">
+          <article key={post.id} data-pdf-avoid-break className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[250px_1fr]">
             <div className="flex w-full max-w-[250px] justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
               {post.imageUrl ? (
                 <img
@@ -2226,7 +2273,7 @@ function HistoricalCharts({ impressionsWithAverage, engagementWithAverage, follo
 
 function AnalysisBlock({ text }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div data-pdf-avoid-break className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="mb-3 text-xl font-black underline decoration-red-500 decoration-wavy underline-offset-4">Analysis</h3>
       <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{text}</p>
     </div>
@@ -2242,7 +2289,7 @@ function NextStepsTab({ generalMatrix, generalAnalysisMatrix, month, monthLabel,
   return (
     <section className="space-y-5">
       <h2 className="text-3xl font-black tracking-tight text-slate-950">Next Steps - {monthLabel}</h2>
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div data-pdf-avoid-break className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
           {nextSteps || "Next steps have not been added for the selected period yet."}
         </p>
@@ -2263,7 +2310,7 @@ function PlaceholderTab({ tabName, monthLabel, year }) {
 
 function ChartCard({ title, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div data-pdf-avoid-break className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2"><h3 className="text-lg font-bold text-slate-950">{title}</h3><Icon name="info" size={16} color="#94A3B8" /></div>
       {children}
     </div>
