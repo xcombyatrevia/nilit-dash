@@ -76,6 +76,7 @@ const POST_FIELDS = {
   likes: ["Gostaram", "Likes", "Reações", "Reacoes", "Reactions"],
   comments: ["Comentários", "Comentarios", "Comments"],
   shares: ["Compartilhamentos", "Shares", "Share"],
+  engagementRate: ["Taxa de engajamento", "Engagement rate", "de engajam", "engajamento"],
   image: ["Imagens", "Imagem", "Image", "Post image"],
   analysis: ["Analises", "Análises", "Analise", "Análise", "Analysis"],
 };
@@ -279,13 +280,14 @@ function buildPublishedRowsFromFixedColumns(matrix, headerRowIndex) {
       Gostaram: row[15] ?? 0,
       Comentários: row[16] ?? 0,
       Compartilhamentos: row[17] ?? 0,
+      "Taxa de engajamento": row[19] ?? 0,
       Imagens: row[22] ?? 0,
       Analises: row[23] ?? 0,
     }))
     .filter((row) => Boolean(row["Título da publicação"] && row["Título da publicação"] !== 0 && row.Criação && row.Criação !== 0));
 
   return {
-    headers: ["Conta", "Título da publicação", "Link da publicação", "Criação", "Impressões", "Cliques", "Gostaram", "Comentários", "Compartilhamentos", "Imagens", "Analises"],
+    headers: ["Conta", "Título da publicação", "Link da publicação", "Criação", "Impressões", "Cliques", "Gostaram", "Comentários", "Compartilhamentos", "Taxa de engajamento", "Imagens", "Analises"],
     rows,
   };
 }
@@ -800,7 +802,7 @@ function buildPublishedPostCards(rows) {
       const shares = getNumberField(row, POST_FIELDS.shares);
       const impressions = getNumberField(row, POST_FIELDS.impressions);
       const clicks = getNumberField(row, POST_FIELDS.clicks);
-      const engagements = likes + comments + shares;
+      const engagementRate = getNumberField(row, POST_FIELDS.engagementRate);
       const fullTitle = String(getField(row, POST_FIELDS.title) || "Untitled post");
       return {
         id: String(getField(row, POST_FIELDS.link) || fullTitle || index),
@@ -815,7 +817,7 @@ function buildPublishedPostCards(rows) {
         likes,
         comments,
         shares,
-        engagements,
+        engagementRate,
       };
     });
 }
@@ -1110,14 +1112,14 @@ function buildMonthlyPostAverages(posts) {
     likes: acc.likes + (Number(post.likes) || 0) / totalPosts,
     comments: acc.comments + (Number(post.comments) || 0) / totalPosts,
     shares: acc.shares + (Number(post.shares) || 0) / totalPosts,
-    engagements: acc.engagements + (Number(post.engagements) || 0) / totalPosts,
+    engagementRate: acc.engagementRate + (Number(post.engagementRate) || 0) / totalPosts,
   }), {
     impressions: 0,
     clicks: 0,
     likes: 0,
     comments: 0,
     shares: 0,
-    engagements: 0,
+    engagementRate: 0,
   });
 }
 
@@ -2137,7 +2139,7 @@ function PostCardsList({ posts }) {
                 <PostMetric label="Reactions" value={post.likes} average={averages.likes} />
                 <PostMetric label="Comments" value={post.comments} average={averages.comments} />
                 <PostMetric label="Share" value={post.shares} average={averages.shares} />
-                <PostMetric label="Engagement" value={post.engagements} average={averages.engagements} />
+                <PostMetric label="Engagement rate" value={post.engagementRate} average={averages.engagementRate} isPercent />
               </div>
 
               <p className="text-xs text-slate-500">Values after the slash show the monthly average for each category.</p>
@@ -2155,15 +2157,17 @@ function PostCardsList({ posts }) {
   );
 }
 
-function PostMetric({ label, value, average }) {
-  const roundedAverage = Math.round(Number(average || 0));
+function PostMetric({ label, value, average, isPercent = false }) {
+  const roundedAverage = isPercent ? Number(average || 0) : Math.round(Number(average || 0));
+  const displayValue = isPercent ? formatPercent(value) : formatNumber(value);
+  const displayAverage = isPercent ? formatPercent(roundedAverage) : formatNumber(roundedAverage);
 
   return (
     <div className="rounded-lg bg-white px-3 py-2 text-center shadow-sm">
       <p className="text-xs text-slate-500">{label}</p>
       <p className="text-lg font-black text-slate-950">
-        {formatNumber(value)}
-        <span className="ml-1 text-xs font-bold text-slate-400">/ {formatNumber(roundedAverage)}</span>
+        {displayValue}
+        <span className="ml-1 text-xs font-bold text-slate-400">/ {displayAverage}</span>
       </p>
     </div>
   );
