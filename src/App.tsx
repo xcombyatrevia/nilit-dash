@@ -350,7 +350,7 @@ async function fetchLinkedInAnalysisCell(selectedNews) {
   if (!edition || edition < 1) return "";
 
   const columnLetter = numberToColumnLetter(edition + 1);
-  const range = `${columnLetter}10:${columnLetter}10`;
+  const range = `${columnLetter}11:${columnLetter}11`;
   const url = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?range=${encodeURIComponent(range)}&tqx=out:json&headers=0&sheet=${encodeURIComponent(NEWS_LINKEDIN_SHEET)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} error while loading ${NEWS_LINKEDIN_SHEET} analysis cell`);
