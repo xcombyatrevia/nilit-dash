@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import {
   LineChart,
   Line,
@@ -33,6 +35,7 @@ const DARK_GRAY = "#111827";
 const CREAM = "#FFF1D6";
 const NILIT_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778015070/logonilit_ep4jwy.jpg";
 const XCOM_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778017157/logoxcom_ws81he.jpg";
+const DEFAULT_POST_IMAGE_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778176710/imagem_geral_nilit_tnqez7.jpg";
 const DASHBOARD_COMPARE_KEYS = new Set(["reactions", "comments", "share", "impressions", "engagementRate"]);
 
 const TABS = ["Dashboard", "Published Posts", "PULSE", "Next Steps"];
@@ -303,6 +306,61 @@ async function fetchSheet(sheetName, options = {}) {
   return parseGoogleTable(cleanGoogleSheetsJson(text).table);
 }
 
+function parseLinkedInSheetTable(table) {
+  const columnLabels = (table.cols || []).map((col, index) => String(col.label || col.id || `Column ${index + 1}`).trim());
+  const rawMatrix = (table.rows || []).map((row) => {
+    const cells = row.c || [];
+    return Array.from({ length: Math.max(columnLabels.length, cells.length) }, (_, index) => {
+      const cell = cells[index];
+      if (!cell) return 0;
+      return cell.f ?? cell.v ?? 0;
+    });
+  });
+
+  const firstColumnLabel = normalizeText(columnLabels[0]);
+  const labelsAreHeaderRow = firstColumnLabel === "metrica edicao" || firstColumnLabel === "metric edition";
+  const matrix = labelsAreHeaderRow ? [columnLabels, ...rawMatrix] : rawMatrix;
+
+  return { headers: matrix[0] || [], rows: [], matrix };
+}
+
+async function fetchLinkedInSheet() {
+  const url = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?range=A:AZ&tqx=out:json&headers=0&sheet=${encodeURIComponent(NEWS_LINKEDIN_SHEET)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} error while loading ${NEWS_LINKEDIN_SHEET}`);
+  const text = await res.text();
+  return parseLinkedInSheetTable(cleanGoogleSheetsJson(text).table);
+}
+
+function numberToColumnLetter(number) {
+  let column = "";
+  let current = Number(number);
+
+  while (current > 0) {
+    const remainder = (current - 1) % 26;
+    column = String.fromCharCode(65 + remainder) + column;
+    current = Math.floor((current - 1) / 26);
+  }
+
+  return column;
+}
+
+async function fetchLinkedInAnalysisCell(selectedNews) {
+  const edition = Number(selectedNews);
+  if (!edition || edition < 1) return "";
+
+  const columnLetter = numberToColumnLetter(edition + 1);
+  const range = `${columnLetter}10:${columnLetter}10`;
+  const url = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?range=${encodeURIComponent(range)}&tqx=out:json&headers=0&sheet=${encodeURIComponent(NEWS_LINKEDIN_SHEET)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} error while loading ${NEWS_LINKEDIN_SHEET} analysis cell`);
+  const text = await res.text();
+  const table = cleanGoogleSheetsJson(text).table;
+  const cell = table.rows?.[0]?.c?.[0];
+  const value = cell?.f ?? cell?.v ?? "";
+  return String(value || "").trim();
+}
+
 async function fetchPublishedPostsSheet() {
   const url = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?range=A:Z&tqx=out:json&headers=0&sheet=${encodeURIComponent(POSTS_SHEET)}`;
   const res = await fetch(url);
@@ -474,6 +532,107 @@ function formatDashboardNumber(value, isPercent = false) {
   return value || "—";
 }
 
+function replaceUnsupportedCanvasColor(value, fallback) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "transparent" || raw === "none") return raw;
+  const lower = raw.toLowerCase();
+  if (lower.includes("oklch") || lower.includes("lab(") || lower.includes("lch(") || lower.includes("color(")) return fallback;
+  return raw;
+}
+
+function cloneElementAsPdfSafeNode(sourceNode) {
+  const clone = sourceNode.cloneNode(true);
+  const sourceElements = [sourceNode, ...Array.from(sourceNode.querySelectorAll("*"))];
+  const cloneElements = [clone, ...Array.from(clone.querySelectorAll("*"))];
+  const propertiesToCopy = [
+    "display", "position", "boxSizing", "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+    "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "font", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textTransform", "whiteSpace",
+    "flexDirection", "alignItems", "justifyContent", "gap", "rowGap", "columnGap", "flexWrap", "flexGrow", "flexShrink",
+    "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridColumn", "gridRow",
+    "borderRadius", "borderWidth", "borderStyle", "overflow", "opacity", "objectFit",
+  ];
+
+  cloneElements.forEach((element, index) => {
+    const sourceElement = sourceElements[index];
+    if (!sourceElement || !element.style) return;
+    const style = window.getComputedStyle(sourceElement);
+
+    element.removeAttribute("class");
+    propertiesToCopy.forEach((property) => {
+      element.style[property] = style[property];
+    });
+
+    element.style.color = replaceUnsupportedCanvasColor(style.color, DARK_GRAY) || DARK_GRAY;
+    element.style.backgroundColor = replaceUnsupportedCanvasColor(style.backgroundColor, "transparent") || "transparent";
+    element.style.borderColor = replaceUnsupportedCanvasColor(style.borderColor, "#E5E7EB") || "#E5E7EB";
+    element.style.borderTopColor = replaceUnsupportedCanvasColor(style.borderTopColor, "#E5E7EB") || "#E5E7EB";
+    element.style.borderRightColor = replaceUnsupportedCanvasColor(style.borderRightColor, "#E5E7EB") || "#E5E7EB";
+    element.style.borderBottomColor = replaceUnsupportedCanvasColor(style.borderBottomColor, "#E5E7EB") || "#E5E7EB";
+    element.style.borderLeftColor = replaceUnsupportedCanvasColor(style.borderLeftColor, "#E5E7EB") || "#E5E7EB";
+    element.style.outlineColor = replaceUnsupportedCanvasColor(style.outlineColor, "#E5E7EB") || "#E5E7EB";
+    element.style.textDecorationColor = replaceUnsupportedCanvasColor(style.textDecorationColor, DARK_GRAY) || DARK_GRAY;
+    element.style.boxShadow = "none";
+    element.style.textShadow = "none";
+
+    const fill = element.getAttribute("fill");
+    const stroke = element.getAttribute("stroke");
+    if (fill && fill !== "none") element.setAttribute("fill", replaceUnsupportedCanvasColor(fill, "#FFFFFF"));
+    if (stroke && stroke !== "none") element.setAttribute("stroke", replaceUnsupportedCanvasColor(stroke, "#E5E7EB"));
+  });
+
+  clone.style.position = "absolute";
+  clone.style.left = "0";
+  clone.style.top = "0";
+  clone.style.width = `${sourceNode.scrollWidth}px`;
+  clone.style.height = "auto";
+  clone.style.backgroundColor = "#F6F8FB";
+  return clone;
+}
+
+async function capturePdfSafeCanvas(section, options = {}) {
+  const scale = options.scale || 1.25;
+  const sandbox = document.createElement("div");
+  sandbox.setAttribute("data-pdf-sandbox", "true");
+  sandbox.style.position = "fixed";
+  sandbox.style.left = "0";
+  sandbox.style.top = "0";
+  sandbox.style.zIndex = "-1";
+  sandbox.style.width = `${section.scrollWidth}px`;
+  sandbox.style.minHeight = `${section.scrollHeight}px`;
+  sandbox.style.backgroundColor = "#F6F8FB";
+  sandbox.style.pointerEvents = "none";
+  sandbox.style.opacity = "0";
+
+  const safeClone = cloneElementAsPdfSafeNode(section);
+  sandbox.appendChild(safeClone);
+  document.body.appendChild(sandbox);
+
+  try {
+    await new Promise((resolve) => window.requestAnimationFrame(() => resolve(null)));
+    return await html2canvas(safeClone, {
+      scale,
+      backgroundColor: "#F6F8FB",
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      imageTimeout: 8000,
+      windowWidth: safeClone.scrollWidth,
+      windowHeight: safeClone.scrollHeight,
+    });
+  } finally {
+    document.body.removeChild(sandbox);
+  }
+}
+
+function waitForBrowserPaint(delay = 80) {
+  return new Promise((resolve) => window.setTimeout(resolve, delay));
+}
+
+function getPdfSectionTitle(section, fallback) {
+  return section.getAttribute("data-pdf-title") || fallback;
+}
+
 function formatNewsletterSendInfo(newsletter) {
   if (!newsletter) return "Send date: —";
 
@@ -617,8 +776,9 @@ function buildDailyOrganicImpressions(rows, selectedYear, selectedMonth) {
 }
 
 function normalizeImageUrl(url) {
-  if (!url || url === 0) return "";
-  return String(url).trim();
+  if (!url || url === 0) return DEFAULT_POST_IMAGE_URL;
+  const normalizedUrl = String(url).trim();
+  return normalizedUrl && normalizedUrl !== "0" ? normalizedUrl : DEFAULT_POST_IMAGE_URL;
 }
 
 function truncateWords(text, limit = 7) {
@@ -786,14 +946,18 @@ function buildNewsletterClickDomainData(clickRows, selectedNewsletter) {
 
 function findEditionColumnIndex(matrix, selectedNews) {
   const targetNumber = Number(selectedNews);
-  const targetText = normalizeText(`News ${selectedNews}`);
-  const searchRows = matrix.slice(0, Math.min(matrix.length, 5));
+  const headerRow = matrix.find((row) => {
+    const firstCell = normalizeText(row[0]);
+    const hasEditionLabel = firstCell.includes("metrica") || firstCell.includes("metric") || firstCell.includes("edicao") || firstCell.includes("edition");
+    const sequentialMatches = row.slice(1, 14).filter((value, index) => Number(value) === index + 1).length;
+    return hasEditionLabel || sequentialMatches >= 3;
+  });
 
-  for (const row of searchRows) {
-    for (let index = 1; index < row.length; index += 1) {
-      const value = row[index];
+  if (headerRow) {
+    for (let index = 1; index < headerRow.length; index += 1) {
+      const value = headerRow[index];
       if (Number(value) === targetNumber) return index;
-      if (normalizeText(value) === targetText) return index;
+      if (normalizeText(value) === normalizeText(`News ${selectedNews}`)) return index;
     }
   }
 
@@ -830,9 +994,10 @@ function buildLinkedInEditionMetrics(matrix, selectedNews) {
   return matrix
     .map((row, index) => {
       const label = String(row[0] || "").trim();
+      const normalizedLabel = normalizeText(label);
       const value = row[selectedColumnIndex];
       const previous = previousColumnIndex >= 0 ? row[previousColumnIndex] : undefined;
-      if (!label || index === 0 || normalizeText(label) === "news") return null;
+      if (!label || index === 0 || normalizedLabel === "news" || normalizedLabel === "analysis") return null;
       if (value === undefined || value === null || value === "") return null;
       return {
         label,
@@ -878,6 +1043,35 @@ function buildLinkedInMetricSeries(matrix, selectedNews, rowNumber, valueKey) {
   }
 
   return addMovingAverage(rows.sort((a, b) => a.news - b.news).slice(-12), valueKey, "movingAvg", 12);
+}
+
+function getLinkedInAnalysis(matrix, selectedNews) {
+  if (!matrix || !matrix.length) return "";
+
+  const targetEdition = Number(selectedNews);
+  const directColumnIndex = targetEdition;
+  const detectedColumnIndex = findEditionColumnIndex(matrix, targetEdition);
+  const possibleColumnIndexes = [directColumnIndex, detectedColumnIndex]
+    .filter((value, index, array) => Number.isFinite(value) && value >= 0 && array.indexOf(value) === index);
+
+  const analysisRow = matrix.find((row) => normalizeText(row[0]) === "analysis");
+  if (!analysisRow) return "";
+
+  for (const columnIndex of possibleColumnIndexes) {
+    const value = analysisRow[columnIndex];
+    const valueText = String(value ?? "").trim();
+    if (valueText && valueText !== "0") return valueText;
+  }
+
+  const editionPattern = new RegExp(`(^|\D)${targetEdition}(\D|$)`);
+  const valueFromRow = analysisRow.find((cell, index) => {
+    if (index === 0) return false;
+    const valueText = String(cell ?? "").trim();
+    if (!valueText || valueText === "0") return false;
+    return editionPattern.test(valueText);
+  });
+
+  return valueFromRow ? String(valueFromRow).trim() : "";
 }
 
 function getStoredValue(key, fallback) {
@@ -937,6 +1131,8 @@ function runDevTests() {
   console.assert(parsePostDate("Date(2026,2,30)")?.getMonth() === 2, "parsePostDate should read Google Sheets Date(...) values.");
   console.assert(formatPercent(0.1027) === "10.3%", "formatPercent should round using the official app locale.");
   console.assert(categoryMatches("Reações", ["reactions", "reações"]), "categoryMatches should compare accented text.");
+  console.assert(replaceUnsupportedCanvasColor("oklch(0.7 0.1 240)", "#FFFFFF") === "#FFFFFF", "PDF export should replace unsupported oklch colors.");
+  console.assert(replaceUnsupportedCanvasColor("OKLCH(0.7 0.1 240)", "#FFFFFF") === "#FFFFFF", "PDF export should replace uppercase OKLCH colors.");
 
   const sampleRows = [
     { Impressões: 100, Cliques: 10, Gostaram: 8, Comentários: 1, Compartilhamentos: 1 },
@@ -946,6 +1142,10 @@ function runDevTests() {
   console.assert(metrics.totalPosts === 2, "buildPublishedPostMetrics should count posts.");
   console.assert(metrics.impressions === 300, "buildPublishedPostMetrics should sum impressions.");
   console.assert(metrics.engagements === 25, "buildPublishedPostMetrics should sum engagements.");
+
+  const averages = buildMonthlyPostAverages([{ impressions: 100, clicks: 10, likes: 2, comments: 1, shares: 1, engagements: 4 }, { impressions: 300, clicks: 30, likes: 6, comments: 3, shares: 3, engagements: 12 }]);
+  console.assert(averages.impressions === 200, "Monthly post averages should calculate impressions average.");
+  console.assert(averages.engagements === 8, "Monthly post averages should calculate engagement average.");
 
   const generalSample = [
     ["Year", 2026, 2026, 2026],
@@ -973,6 +1173,8 @@ function runDevTests() {
   const cards = buildPublishedPostCards(cardRows);
   console.assert(cards[0].shortTitle === "One two three four five six seven...", "Card should truncate title to seven words.");
   console.assert(cards[0].imageUrl.includes("cloudinary"), "Card should preserve the Cloudinary URL.");
+  const cardWithoutImage = buildPublishedPostCards([{ "Título da publicação": "Post without image", Criação: "04/01/2026", Imagens: "" }]);
+  console.assert(cardWithoutImage[0].imageUrl === DEFAULT_POST_IMAGE_URL, "Card should use the default NILIT image when the post image is missing.");
 
   const newsletterSample = buildNewsletterRows([
     { News: 11, Sent: 2532, "Open Rate": "34.3%", "Click Rate": "5.3%", Bounces: 79, Unsubscribes: 4 },
@@ -996,6 +1198,33 @@ function runDevTests() {
   console.assert(medianNews9?.clickRateMedian === null, "First edition should not have a previous rolling median.");
   console.assert(Math.abs((medianNews10?.clickRateMedian ?? 0) - 0.04) < 0.00001, "Second edition should use only the first edition in the rolling median.");
   console.assert(Math.abs((medianNews11?.clickRateMedian ?? 0) - 0.0585) < 0.00001, "Third edition should use the two previous editions in the rolling median.");
+  const linkedInAnalysisSample = [
+    ["Métrica/Edição", 1, 2, 3],
+    ["New Subscribers", 0, 0, 0],
+    ["Impressions", 100, 200, 300],
+    ["Unique Impressions", 50, 100, 150],
+    ["Clicks", 5, 10, 15],
+    ["Engagement Rate", "1%", "2%", "3%"],
+    ["Views", 20, 30, 40],
+    ["E-mails Sent", 100, 200, 300],
+    ["Open Rate (e-mail)", "20%", "21%", "22%"],
+    ["Analysis", "Analysis 1", "Analysis 2", "Analysis 3"],
+  ];
+  console.assert(getLinkedInAnalysis(linkedInAnalysisSample, 3) === "Analysis 3", "LinkedIn analysis should read row 10 for the selected edition.");
+
+  const linkedInScreenshotShape = [
+    ["Métrica/Edição", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    ["New Subscribers", 0, 0, 0, 0, 0, 0, 0, 0, 0, 88, 21, 29],
+    ["Impressions", 0, 0, 0, 0, 0, 0, 0, 0, 0, 759, 1000, 718],
+    ["Unique Impressions", 0, 0, 0, 0, 0, 0, 0, 0, 0, 443, 487, 315],
+    ["Clicks", 0, 0, 0, 0, 0, 0, 0, 0, 0, 31, 32, 7],
+    ["Engagement Rate", 0, 0, 0, 0, 0, 0, 0, 0, 0, "8.40%", "7.00%", "4.70%"],
+    ["Views", 0, 0, 0, 0, 0, 0, 0, 0, 0, 522, 549, 496],
+    ["E-mails Sent", 0, 0, 0, 0, 0, 0, 0, 0, 0, 1084, 1174, 1196],
+    ["Open Rate (e-mail)", 0, 0, 0, 0, 0, 0, 0, 0, 0, "28%", "29%", "28%"],
+    ["Analysis", 0, 0, 0, 0, 0, 0, 0, 0, 0, "Análise 10", "Análise 11", "Análise 12"],
+  ];
+  console.assert(getLinkedInAnalysis(linkedInScreenshotShape, 11) === "Análise 11", "LinkedIn analysis should read column L for edition 11 in the screenshot layout.");
   console.assert(typeof HistoricalCharts === "function", "HistoricalCharts should be defined before use.");
 }
 
@@ -1011,6 +1240,7 @@ export default function App() {
   const [newsletterRows, setNewsletterRows] = useState([]);
   const [newsletterClickRows, setNewsletterClickRows] = useState([]);
   const [linkedinMatrix, setLinkedinMatrix] = useState([]);
+  const [linkedinAnalysisText, setLinkedinAnalysisText] = useState("");
   const [generalMatrix, setGeneralMatrix] = useState([]);
   const [generalAnalysisMatrix, setGeneralAnalysisMatrix] = useState([]);
   const [year, setYear] = useState(() => Number(getStoredValue("nilit_year", 2026)));
@@ -1018,6 +1248,12 @@ export default function App() {
   const [selectedNews, setSelectedNews] = useState(() => Number(getStoredValue("nilit_selected_news", 11)));
   const [status, setStatus] = useState("Loading spreadsheet data...");
   const [lastUpdate, setLastUpdate] = useState("");
+  const exportRootRef = useRef(null);
+  const pdfBlobRef = useRef(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState("");
+  const [pdfDownloadUrl, setPdfDownloadUrl] = useState("");
+  const [pdfFileName, setPdfFileName] = useState("");
 
   useEffect(() => {
     runDevTests();
@@ -1040,6 +1276,20 @@ export default function App() {
     setStoredValue("nilit_selected_news", selectedNews);
   }, [selectedNews]);
 
+  useEffect(() => {
+    loadLinkedInAnalysisForSelectedNews(selectedNews);
+  }, [selectedNews]);
+
+  async function loadLinkedInAnalysisForSelectedNews(newsEdition) {
+    try {
+      const analysis = await fetchLinkedInAnalysisCell(newsEdition);
+      setLinkedinAnalysisText(analysis);
+    } catch (error) {
+      console.error(error);
+      setLinkedinAnalysisText("");
+    }
+  }
+
   async function loadAllSheets() {
     try {
       setStatus("Loading data from Posts, Daily Data, Email News, LinkedIn News, Clicks, and General Data sheets...");
@@ -1048,7 +1298,7 @@ export default function App() {
         fetchDailySheet(),
         fetchNewsletterSheet(),
         fetchNewsletterClicksSheet(),
-        fetchSheet(NEWS_LINKEDIN_SHEET, { range: "A:AZ" }),
+        fetchLinkedInSheet(),
         fetchSheet(GENERAL_SHEET, { range: "A:AZ" }),
         fetchSheet(GENERAL_SHEET, { range: "A18:AZ25" }),
       ]);
@@ -1057,6 +1307,8 @@ export default function App() {
       setDailyRows(daily.rows);
       setNewsletterClickRows(newsletterClicks.rows);
       setLinkedinMatrix(linkedin.matrix);
+      const analysisCell = await fetchLinkedInAnalysisCell(selectedNews);
+      setLinkedinAnalysisText(analysisCell);
       const parsedNewsletterRows = buildNewsletterRows(newsletter.rows);
       setNewsletterRows(parsedNewsletterRows);
       if (parsedNewsletterRows.length && !parsedNewsletterRows.some((row) => Number(row.news) === Number(selectedNews))) {
@@ -1069,6 +1321,182 @@ export default function App() {
     } catch (error) {
       console.error(error);
       setStatus("Error loading data. Check whether the spreadsheet is public and whether the required sheets exist.");
+    }
+  }
+
+  async function triggerPdfDownload(blob, fileName, options = {}) {
+    if (!blob) {
+      setStatus("PDF is not available yet. Please export it again.");
+      return false;
+    }
+
+    const safeFileName = fileName || "nilit-communication-results.pdf";
+
+    if (options.useFilePicker && window.showSaveFilePicker) {
+      try {
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: safeFileName,
+          types: [
+            {
+              description: "PDF document",
+              accept: { "application/pdf": [".pdf"] },
+            },
+          ],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        setStatus("PDF saved successfully.");
+        setPdfProgress("PDF saved successfully.");
+        return true;
+      } catch (filePickerError) {
+        if (filePickerError?.name === "AbortError") return false;
+        console.warn("File picker download failed; falling back to browser download.", filePickerError);
+      }
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
+
+    try {
+      const downloadLink = document.createElement("a");
+      downloadLink.href = objectUrl;
+      downloadLink.download = safeFileName;
+      downloadLink.target = "_blank";
+      downloadLink.rel = "noopener noreferrer";
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+      if (options.openPreview) {
+        window.setTimeout(() => {
+          window.open(objectUrl, "_blank", "noopener,noreferrer");
+        }, 150);
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      return true;
+    } catch (downloadError) {
+      console.warn("Direct download failed; trying to open PDF in a new tab.", downloadError);
+      try {
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        return true;
+      } catch (openError) {
+        URL.revokeObjectURL(objectUrl);
+        setStatus("The browser blocked the PDF download. Try the deployed Vercel version or allow pop-ups/downloads for this page.");
+        setPdfProgress("PDF download was blocked by the browser.");
+        return false;
+      }
+    }
+  }
+
+  async function handleManualPdfDownload() {
+    const downloaded = await triggerPdfDownload(pdfBlobRef.current, pdfFileName || "nilit-communication-results.pdf", {
+      useFilePicker: true,
+      openPreview: true,
+    });
+
+    if (downloaded) {
+      setStatus("PDF download requested. If nothing appears, check your browser downloads bar or pop-up blocker.");
+      setPdfProgress("PDF download requested.");
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!exportRootRef.current || isExportingPdf) return;
+
+    try {
+      if (pdfDownloadUrl) URL.revokeObjectURL(pdfDownloadUrl);
+      setPdfDownloadUrl("");
+      setPdfFileName("");
+      pdfBlobRef.current = null;
+      setIsExportingPdf(true);
+      setPdfProgress("Preparing PDF export...");
+      setStatus("Preparing PDF export...");
+      await waitForBrowserPaint(250);
+
+      const sections = Array.from(exportRootRef.current.querySelectorAll("[data-pdf-section]"));
+      if (!sections.length) {
+        setStatus("PDF export failed: no export sections were found.");
+        return;
+      }
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 24;
+      const contentWidth = pageWidth - margin * 2;
+      let isFirstPage = true;
+
+      for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex += 1) {
+        const section = sections[sectionIndex];
+        const sectionTitle = getPdfSectionTitle(section, `Section ${sectionIndex + 1}`);
+        const progressMessage = `Capturing ${sectionTitle} (${sectionIndex + 1}/${sections.length})...`;
+        setPdfProgress(progressMessage);
+        setStatus(progressMessage);
+        await waitForBrowserPaint(120);
+
+        let canvas;
+        try {
+          canvas = await capturePdfSafeCanvas(section, { scale: 1.25 });
+        } catch (captureError) {
+          console.error(captureError);
+          throw new Error(`PDF export failed while capturing ${sectionTitle}.`);
+        }
+
+        const pageContentHeightInCanvas = Math.floor((pageHeight - margin * 2) * (canvas.width / contentWidth));
+        let sourceY = 0;
+        let pageInSection = 1;
+
+        while (sourceY < canvas.height) {
+          setPdfProgress(`Adding ${sectionTitle} page ${pageInSection}...`);
+          await waitForBrowserPaint(20);
+
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+
+          const sliceHeight = Math.min(pageContentHeightInCanvas, canvas.height - sourceY);
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceHeight;
+
+          const context = sliceCanvas.getContext("2d");
+          if (!context) throw new Error("Could not create PDF canvas context.");
+          context.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+
+          const imageData = sliceCanvas.toDataURL("image/jpeg", 0.88);
+          const imageHeight = (sliceHeight * contentWidth) / canvas.width;
+          pdf.addImage(imageData, "JPEG", margin, margin, contentWidth, imageHeight);
+
+          sourceY += sliceHeight;
+          pageInSection += 1;
+        }
+      }
+
+      setPdfProgress("Saving PDF...");
+      setStatus("Saving PDF...");
+      await waitForBrowserPaint(100);
+
+      const monthSlug = String(month).padStart(2, "0");
+      const fileName = `nilit-communication-results-${year}-${monthSlug}-news-${selectedNews}.pdf`;
+      const pdfBlob = pdf.output("blob");
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      pdfBlobRef.current = pdfBlob;
+      setPdfFileName(fileName);
+      setPdfDownloadUrl(pdfUrl);
+
+      await triggerPdfDownload(pdfBlob, fileName);
+
+      setStatus("PDF exported successfully. If the automatic download is blocked, click Download / Open PDF below.");
+      setPdfProgress("PDF ready for download.");
+    } catch (error) {
+      console.error(error);
+      const message = error?.message || "Error exporting PDF. Try again after all images and charts finish loading.";
+      setStatus(message);
+      setPdfProgress(message);
+    } finally {
+      setIsExportingPdf(false);
+      window.setTimeout(() => setPdfProgress(""), 5000);
     }
   }
 
@@ -1096,9 +1524,9 @@ export default function App() {
       return <PublishedPostsTab rows={filteredPosts} dailyRows={dailyRows} generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} year={year} />;
     }
     if (activeTab === "PULSE") {
-      return <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} selectedNews={selectedNews} />;
+      return <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} selectedNews={selectedNews} linkedInAnalysis={linkedinAnalysisText} />;
     }
-    return <PlaceholderTab tabName={activeTab} monthLabel={monthLabel} year={year} />;
+    return <NextStepsTab generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} monthLabel={monthLabel} year={year} />;
   }
 
   function renderControlsBar() {
@@ -1187,11 +1615,111 @@ export default function App() {
 
       <main className="mx-auto max-w-7xl space-y-5 px-6 py-6">
         <div className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm md:flex-row md:items-center md:justify-between">
-          <p>{status}</p>
-          <button onClick={loadAllSheets} className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: BRAND_BLUE }}>Load data</button>
+          <div>
+            <p>{status}</p>
+            {pdfProgress ? <p className="mt-1 text-xs font-semibold" style={{ color: BRAND_BLUE }}>{pdfProgress}</p> : null}
+            {pdfDownloadUrl ? (
+              <button
+                type="button"
+                onClick={handleManualPdfDownload}
+                className="mt-2 inline-flex rounded-md border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold transition hover:bg-blue-100"
+                style={{ color: BRAND_BLUE }}
+              >
+                Download / Open PDF
+              </button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={loadAllSheets} className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: BRAND_BLUE }}>Load data</button>
+            <button
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ color: BRAND_BLUE }}
+            >
+              {isExportingPdf ? "Exporting..." : "Export PDF"}
+            </button>
+          </div>
         </div>
         {renderTab()}
       </main>
+
+      <PdfExportRoot
+        ref={exportRootRef}
+        year={year}
+        month={month}
+        monthLabel={monthLabel}
+        selectedNews={selectedNews}
+        filteredPosts={filteredPosts}
+        dailyRows={dailyRows}
+        newsletterRows={newsletterRows}
+        newsletterClickRows={newsletterClickRows}
+        linkedinMatrix={linkedinMatrix}
+        linkedInAnalysis={linkedinAnalysisText}
+        generalMatrix={generalMatrix}
+        generalAnalysisMatrix={generalAnalysisMatrix}
+      />
+    </div>
+  );
+}
+
+const PdfExportRoot = React.forwardRef(function PdfExportRoot({
+  year,
+  month,
+  monthLabel,
+  selectedNews,
+  filteredPosts,
+  dailyRows,
+  newsletterRows,
+  newsletterClickRows,
+  linkedinMatrix,
+  linkedInAnalysis,
+  generalMatrix,
+  generalAnalysisMatrix,
+}, ref) {
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      className="pointer-events-none fixed left-[-10000px] top-0 w-[1200px] bg-[#F6F8FB] p-6 text-slate-900"
+    >
+      <section data-pdf-section data-pdf-title="Dashboard" className="mb-8 bg-[#F6F8FB] p-2">
+        <PdfSectionHeader title="Dashboard" subtitle={`${monthLabel} ${year}`} />
+        <DashboardTab generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} monthLabel={monthLabel} year={year} />
+      </section>
+
+      <section data-pdf-section data-pdf-title="Published Posts" className="mb-8 bg-[#F6F8FB] p-2">
+        <PdfSectionHeader title="Published Posts" subtitle={`${monthLabel} ${year}`} />
+        <PublishedPostsTab rows={filteredPosts} dailyRows={dailyRows} generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} year={year} />
+      </section>
+
+      <section data-pdf-section data-pdf-title="PULSE" className="mb-8 bg-[#F6F8FB] p-2">
+        <PdfSectionHeader title="PULSE" subtitle={`News ${selectedNews}`} />
+        <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} selectedNews={selectedNews} linkedInAnalysis={linkedInAnalysis} />
+      </section>
+
+      <section data-pdf-section data-pdf-title="Next Steps" className="mb-8 bg-[#F6F8FB] p-2">
+        <PdfSectionHeader title="Next Steps" subtitle={`${monthLabel} ${year}`} />
+        <NextStepsTab generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} monthLabel={monthLabel} year={year} />
+      </section>
+    </div>
+  );
+});
+
+function PdfSectionHeader({ title, subtitle }) {
+  return (
+    <div className="mb-5 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+      <div className="flex items-center gap-5">
+        <NilitLogo />
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-slate-400">Communication Results</p>
+          <h1 className="text-3xl font-black text-slate-950">{title}</h1>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-sm font-semibold text-slate-500">{subtitle}</p>
+        <p className="mt-1 text-xs text-slate-400">Generated from the selected dashboard filters</p>
+      </div>
     </div>
   );
 }
@@ -1316,11 +1844,13 @@ function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatr
   );
 }
 
-function PulseTab({ rows, clickRows = [], linkedinMatrix = [], selectedNews }) {
+function PulseTab({ rows, clickRows = [], linkedinMatrix = [], selectedNews, linkedInAnalysis = "" }) {
+
   return (
     <section className="space-y-8">
       <PulseLinkedInSection matrix={linkedinMatrix} selectedNews={selectedNews} />
       <PulseEmailSection rows={rows} clickRows={clickRows} selectedNews={selectedNews} />
+      <AnalysisBlock text={linkedInAnalysis || "LinkedIn analysis has not been added for the selected edition yet."} />
     </section>
   );
 }
@@ -1682,6 +2212,24 @@ function AnalysisBlock({ text }) {
       <h3 className="mb-3 text-xl font-black underline decoration-red-500 decoration-wavy underline-offset-4">Analysis</h3>
       <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{text}</p>
     </div>
+  );
+}
+
+function NextStepsTab({ generalMatrix, generalAnalysisMatrix, month, monthLabel, year }) {
+  const nextSteps = useMemo(
+    () => buildGeneralAnalysis(generalMatrix, generalAnalysisMatrix, year, month, "Next Steps"),
+    [generalMatrix, generalAnalysisMatrix, year, month]
+  );
+
+  return (
+    <section className="space-y-5">
+      <h2 className="text-3xl font-black tracking-tight text-slate-950">Next Steps - {monthLabel}</h2>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
+          {nextSteps || "Next steps have not been added for the selected period yet."}
+        </p>
+      </div>
+    </section>
   );
 }
 
