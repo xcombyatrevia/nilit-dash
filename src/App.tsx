@@ -1835,7 +1835,7 @@ function DashboardMetric({ metric, large = false }) {
 
   return (
     <div className="flex min-w-0 flex-col items-center justify-center rounded-xl px-2 py-3 text-center transition">
-      <p className="min-h-[2rem] text-xs font-medium leading-tight text-slate-700 underline decoration-red-500 decoration-wavy underline-offset-4">{metric.label}</p>
+      <p className="min-h-[2rem] text-xs font-medium leading-tight text-slate-700">{metric.label}</p>
       <p className={`${large ? "text-3xl" : "text-2xl"} mt-2 flex flex-wrap items-baseline justify-center gap-x-1 gap-y-0.5 font-black leading-none text-black`}>
         <span>{currentValue}</span>
         {metric.showPrevious ? (
@@ -2176,7 +2176,7 @@ function PostCardsList({ posts }) {
               </div>
 
               <div>
-                <h5 className="mb-2 text-base font-black underline decoration-red-500 decoration-wavy underline-offset-4">Analysis</h5>
+                <h5 className="mb-2 text-base font-black">Analysis</h5>
                 <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">{post.analysis}</p>
               </div>
 
@@ -2274,7 +2274,7 @@ function HistoricalCharts({ impressionsWithAverage, engagementWithAverage, follo
 function AnalysisBlock({ text }) {
   return (
     <div data-pdf-avoid-break className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h3 className="mb-3 text-xl font-black underline decoration-red-500 decoration-wavy underline-offset-4">Analysis</h3>
+      <h3 className="mb-3 text-xl font-black">Analysis</h3>
       <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">{text}</p>
     </div>
   );
