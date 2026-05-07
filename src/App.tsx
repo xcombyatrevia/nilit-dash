@@ -1268,6 +1268,20 @@ function runDevTests() {
     ["Analysis", 0, 0, 0, 0, 0, 0, 0, 0, 0, "Análise 10", "Análise 11", "Análise 12"],
   ];
   console.assert(getLinkedInAnalysis(linkedInScreenshotShape, 11) === "Análise 11", "LinkedIn analysis should read column L for edition 11 in the screenshot layout.");
+  const linkedInImpressionsSeriesSample = buildLinkedInMetricSeries([
+    ["Métrica/Edição", 1, 2, 3],
+    ["Total Subscribers", 1000, 1100, 1200],
+    ["New Subscribers", 0, 10, 20],
+    ["Impressions", 100, 200, 300],
+    ["Unique Impressions", 50, 100, 150],
+    ["Clicks", 5, 10, 15],
+    ["Engagement Rate", "1%", "2%", "3%"],
+    ["Views", 20, 30, 40],
+    ["E-mails Sent", 100, 200, 300],
+    ["Open Rate (e-mail)", "20%", "21%", "22%"],
+    ["Analysis", "Analysis 1", "Analysis 2", "Analysis 3"],
+  ], 3, 4, "impressions");
+  console.assert(linkedInImpressionsSeriesSample.at(-1)?.impressions === 300, "LinkedIn Impressions chart should read row 4 after adding Total Subscribers.");
   const linkedInOpenRateSeriesSample = buildLinkedInMetricSeries([
     ["Métrica/Edição", 1, 2, 3],
     ["Total Subscribers", 1000, 1100, 1200],
@@ -1920,7 +1934,7 @@ function PulseTab({ rows, clickRows = [], linkedinMatrix = [], selectedNews, lin
 
 function PulseLinkedInSection({ matrix = [], selectedNews }) {
   const metrics = useMemo(() => buildLinkedInEditionMetrics(matrix, selectedNews), [matrix, selectedNews]);
-  const impressionsSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 3, "impressions"), [matrix, selectedNews]);
+  const impressionsSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 4, "impressions"), [matrix, selectedNews]);
   const openRateSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 10, "openRate"), [matrix, selectedNews]);
 
   if (!matrix.length) {
