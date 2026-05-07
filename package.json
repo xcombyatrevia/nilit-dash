@@ -18,8 +18,9 @@
     "class-variance-authority": "latest",
     "clsx": "latest",
     "tailwind-merge": "latest",
-    "tailwindcss": "latest",
-    "@tailwindcss/postcss": "latest"
+    "tailwindcss": "3.4.17",
+    "postcss": "latest",
+    "autoprefixer": "latest"
   },
   "devDependencies": {}
 }
