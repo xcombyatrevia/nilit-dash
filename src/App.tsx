@@ -2267,19 +2267,21 @@ function PulseEmailSection({ rows, clickRows = [], selectedNews }) {
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-1"><h2 className="text-2xl font-bold text-slate-950">PULSE - EMAIL</h2></div>
-      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
-        <NewsletterKpi label="Sent" value={selected?.sent} previous={stats.previous?.sent} />
-        <NewsletterKpi label="Open Rate" value={selected?.openRate} previous={stats.previous?.openRate} isPercent />
-        <NewsletterKpi label="Click Rate" value={selected?.clickRate} previous={stats.previous?.clickRate} isPercent />
-        <NewsletterKpi label="Bounces" value={selected?.bounces} previous={stats.previous?.bounces} />
-        <NewsletterKpi label="Unsubscribes" value={selected?.unsubscribes} previous={stats.previous?.unsubscribes} />
-      </div>
-      <p className="text-xs text-slate-500">Values after the slash compare the selected edition with the immediately previous edition.</p>
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-slate-700">
-          <span className="font-semibold text-slate-900">{formatNewsletterSendInfo(selected)}</span>
-        </p>
+      <div data-pdf-avoid-break className="space-y-5">
+        <div className="flex flex-col gap-1"><h2 className="text-2xl font-bold text-slate-950">PULSE - EMAIL</h2></div>
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+          <NewsletterKpi label="Sent" value={selected?.sent} previous={stats.previous?.sent} />
+          <NewsletterKpi label="Open Rate" value={selected?.openRate} previous={stats.previous?.openRate} isPercent />
+          <NewsletterKpi label="Click Rate" value={selected?.clickRate} previous={stats.previous?.clickRate} isPercent />
+          <NewsletterKpi label="Bounces" value={selected?.bounces} previous={stats.previous?.bounces} />
+          <NewsletterKpi label="Unsubscribes" value={selected?.unsubscribes} previous={stats.previous?.unsubscribes} />
+        </div>
+        <p className="text-xs text-slate-500">Values after the slash compare the selected edition with the immediately previous edition.</p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm text-slate-700">
+            <span className="font-semibold text-slate-900">{formatNewsletterSendInfo(selected)}</span>
+          </p>
+        </div>
       </div>
       <ChartCard title="Open Rate — last editions">
         <ResponsiveContainer width="100%" height={320}>
