@@ -6,6 +6,7 @@ import {
   Line,
   BarChart,
   Bar,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -361,6 +362,26 @@ async function fetchLinkedInAnalysisCell(selectedNews) {
   const cell = table.rows?.[0]?.c?.[0];
   const value = cell?.f ?? cell?.v ?? "";
   return String(value || "").trim();
+}
+
+async function fetchLinkedInTopicCells() {
+  const range = "B12:AZ12";
+  const url = `https://docs.google.com/spreadsheets/d/${DEFAULT_SPREADSHEET_ID}/gviz/tq?range=${encodeURIComponent(range)}&tqx=out:json&headers=0&sheet=${encodeURIComponent(NEWS_LINKEDIN_SHEET)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} error while loading ${NEWS_LINKEDIN_SHEET} topic cells`);
+  const text = await res.text();
+  const table = cleanGoogleSheetsJson(text).table;
+  const cells = table.rows?.[0]?.c || [];
+  const topicsByEdition = {};
+
+  cells.forEach((cell, index) => {
+    const edition = index + 1;
+    const value = cell?.f ?? cell?.v ?? "";
+    const topic = String(value || "").trim();
+    if (topic && topic !== "0") topicsByEdition[edition] = topic;
+  });
+
+  return topicsByEdition;
 }
 
 async function fetchPublishedPostsSheet() {
@@ -1070,8 +1091,26 @@ function getEditionNumberFromColumn(matrix, columnIndex) {
   return columnIndex;
 }
 
-function buildLinkedInMetricSeries(matrix, selectedNews, rowNumber, valueKey) {
+function getLinkedInTopicRow(matrix) {
+  if (!matrix || !matrix.length) return [];
+
+  const labeledRow = matrix.find((row) => normalizeText(row[0]) === "topic");
+  if (labeledRow) return labeledRow;
+
+  const rowWithTopicTexts = matrix.find((row) => {
+    const nonEmptyTextCells = row.slice(1).filter((cell) => {
+      const text = String(cell || "").trim();
+      return text && text !== "0" && !Number.isFinite(Number(text));
+    });
+    return nonEmptyTextCells.length >= 2 && nonEmptyTextCells.some((cell) => String(cell).split(" ").length >= 2);
+  });
+
+  return rowWithTopicTexts || matrix[11] || matrix[12] || [];
+}
+
+function buildLinkedInMetricSeries(matrix, selectedNews, rowNumber, valueKey, topicsByEdition = {}) {
   const metricRow = matrix[rowNumber - 1] || [];
+  const topicRow = getLinkedInTopicRow(matrix);
   const selectedColumnIndex = findEditionColumnIndex(matrix, selectedNews);
   if (selectedColumnIndex === -1 || !metricRow.length) return [];
 
@@ -1079,13 +1118,78 @@ function buildLinkedInMetricSeries(matrix, selectedNews, rowNumber, valueKey) {
   for (let index = 1; index <= selectedColumnIndex; index += 1) {
     const edition = getEditionNumberFromColumn(matrix, index);
     if (edition > Number(selectedNews)) continue;
+    const topic = String(topicsByEdition[edition] || topicRow[index] || "").trim();
     rows.push({
       news: edition,
+      topic,
+      topicShort: topic ? truncateWords(topic, 3) : "",
       [valueKey]: toNumber(metricRow[index]),
     });
   }
 
   return addMovingAverage(rows.sort((a, b) => a.news - b.news).slice(-12), valueKey, "movingAvg", 12);
+}
+
+function LinkedInTopicTick({ x, y, payload, topicMap = {} }) {
+  const topic = topicMap[payload?.value] || "";
+  const words = String(topic || "").split(" ").filter(Boolean);
+  const line1 = words.slice(0, 2).join(" ");
+  const line2 = words.length > 2 ? `${words.slice(2, 4).join(" ")}...` : "";
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fill="#475569" fontSize={11} fontWeight={700}>
+        {`News ${payload?.value}`}
+      </text>
+      {line1 ? (
+        <text x={0} y={0} dy={29} textAnchor="middle" fill="#64748B" fontSize={9}>
+          {line1}
+        </text>
+      ) : null}
+      {line2 ? (
+        <text x={0} y={0} dy={41} textAnchor="middle" fill="#64748B" fontSize={9}>
+          {line2}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
+function LinkedInOpenRateTooltip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const row = payload[0]?.payload || {};
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+      <p className="font-bold text-slate-950">News {label}</p>
+      {row.topic ? <p className="mt-1 max-w-[360px] text-xs text-slate-600">{row.topic}</p> : null}
+      {payload.map((item) => (
+        <p key={item.dataKey} className="mt-1" style={{ color: item.color }}>
+          {item.name}: {formatPercent(item.value)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function OpenRateTopicRightTick({ x, y, payload }) {
+  const topic = String(payload?.value || "").trim();
+  if (!topic) return null;
+
+  const maxChars = 72;
+  const displayTopic = topic.length > maxChars ? `${topic.slice(0, maxChars - 3)}...` : topic;
+
+  return (
+    <text
+      x={x + 8}
+      y={y + 4}
+      textAnchor="start"
+      fill="#334155"
+      fontSize={11}
+      fontWeight={600}
+    >
+      {displayTopic}
+    </text>
+  );
 }
 
 function getLinkedInAnalysis(matrix, selectedNews) {
@@ -1312,6 +1416,7 @@ export default function App() {
   const [newsletterClickRows, setNewsletterClickRows] = useState([]);
   const [linkedinMatrix, setLinkedinMatrix] = useState([]);
   const [linkedinAnalysisText, setLinkedinAnalysisText] = useState("");
+  const [linkedinTopicsByEdition, setLinkedinTopicsByEdition] = useState({});
   const [generalMatrix, setGeneralMatrix] = useState([]);
   const [generalAnalysisMatrix, setGeneralAnalysisMatrix] = useState([]);
   const [year, setYear] = useState(() => Number(getStoredValue("nilit_year", 2026)));
@@ -1364,12 +1469,13 @@ export default function App() {
   async function loadAllSheets() {
     try {
       setStatus("Loading data from Posts, Daily Data, Email News, LinkedIn News, Clicks, and General Data sheets...");
-      const [posts, daily, newsletter, newsletterClicks, linkedin, general, generalAnalysis] = await Promise.all([
+      const [posts, daily, newsletter, newsletterClicks, linkedin, linkedinTopics, general, generalAnalysis] = await Promise.all([
         fetchPublishedPostsSheet(),
         fetchDailySheet(),
         fetchNewsletterSheet(),
         fetchNewsletterClicksSheet(),
         fetchLinkedInSheet(),
+        fetchLinkedInTopicCells(),
         fetchSheet(GENERAL_SHEET, { range: "A:AZ" }),
         fetchSheet(GENERAL_SHEET, { range: "A18:AZ25" }),
       ]);
@@ -1378,6 +1484,7 @@ export default function App() {
       setDailyRows(daily.rows);
       setNewsletterClickRows(newsletterClicks.rows);
       setLinkedinMatrix(linkedin.matrix);
+      setLinkedinTopicsByEdition(linkedinTopics);
       const analysisCell = await fetchLinkedInAnalysisCell(selectedNews);
       setLinkedinAnalysisText(analysisCell);
       const parsedNewsletterRows = buildNewsletterRows(newsletter.rows);
@@ -1601,7 +1708,7 @@ export default function App() {
       return <PublishedPostsTab rows={filteredPosts} dailyRows={dailyRows} generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} year={year} />;
     }
     if (activeTab === "PULSE") {
-      return <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} selectedNews={selectedNews} linkedInAnalysis={linkedinAnalysisText} />;
+      return <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} linkedinTopicsByEdition={linkedinTopicsByEdition} selectedNews={selectedNews} linkedInAnalysis={linkedinAnalysisText} />;
     }
     return <NextStepsTab generalMatrix={generalMatrix} generalAnalysisMatrix={generalAnalysisMatrix} month={month} monthLabel={monthLabel} year={year} />;
   }
@@ -1733,6 +1840,7 @@ export default function App() {
         newsletterClickRows={newsletterClickRows}
         linkedinMatrix={linkedinMatrix}
         linkedInAnalysis={linkedinAnalysisText}
+        linkedinTopicsByEdition={linkedinTopicsByEdition}
         generalMatrix={generalMatrix}
         generalAnalysisMatrix={generalAnalysisMatrix}
       />
@@ -1751,6 +1859,7 @@ const PdfExportRoot = React.forwardRef(function PdfExportRoot({
   newsletterClickRows,
   linkedinMatrix,
   linkedInAnalysis,
+  linkedinTopicsByEdition,
   generalMatrix,
   generalAnalysisMatrix,
 }, ref) {
@@ -1772,7 +1881,7 @@ const PdfExportRoot = React.forwardRef(function PdfExportRoot({
 
       <section data-pdf-section data-pdf-title="PULSE" className="mb-8 bg-[#F6F8FB] p-2">
         <PdfSectionHeader title="PULSE" subtitle={`News ${selectedNews}`} />
-        <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} selectedNews={selectedNews} linkedInAnalysis={linkedInAnalysis} />
+        <PulseTab rows={newsletterRows} clickRows={newsletterClickRows} linkedinMatrix={linkedinMatrix} linkedinTopicsByEdition={linkedinTopicsByEdition} selectedNews={selectedNews} linkedInAnalysis={linkedInAnalysis} />
       </section>
 
       <section data-pdf-section data-pdf-title="Next Steps" className="mb-8 bg-[#F6F8FB] p-2">
@@ -1921,21 +2030,28 @@ function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatr
   );
 }
 
-function PulseTab({ rows, clickRows = [], linkedinMatrix = [], selectedNews, linkedInAnalysis = "" }) {
+function PulseTab({ rows, clickRows = [], linkedinMatrix = [], linkedinTopicsByEdition = {}, selectedNews, linkedInAnalysis = "" }) {
 
   return (
     <section className="space-y-8">
-      <PulseLinkedInSection matrix={linkedinMatrix} selectedNews={selectedNews} />
+      <PulseLinkedInSection matrix={linkedinMatrix} topicsByEdition={linkedinTopicsByEdition} selectedNews={selectedNews} />
       <PulseEmailSection rows={rows} clickRows={clickRows} selectedNews={selectedNews} />
       <AnalysisBlock text={linkedInAnalysis || "LinkedIn analysis has not been added for the selected edition yet."} />
     </section>
   );
 }
 
-function PulseLinkedInSection({ matrix = [], selectedNews }) {
+function PulseLinkedInSection({ matrix = [], topicsByEdition = {}, selectedNews }) {
   const metrics = useMemo(() => buildLinkedInEditionMetrics(matrix, selectedNews), [matrix, selectedNews]);
-  const impressionsSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 4, "impressions"), [matrix, selectedNews]);
-  const openRateSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 10, "openRate"), [matrix, selectedNews]);
+  const impressionsSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 4, "impressions", topicsByEdition), [matrix, selectedNews, topicsByEdition]);
+  const openRateSeries = useMemo(() => buildLinkedInMetricSeries(matrix, selectedNews, 10, "openRate", topicsByEdition), [matrix, selectedNews, topicsByEdition]);
+  const openRateTopicMap = useMemo(() => {
+    const map = {};
+    openRateSeries.forEach((row) => {
+      map[row.news] = row.topic;
+    });
+    return map;
+  }, [openRateSeries]);
 
   if (!matrix.length) {
     return (
@@ -1978,18 +2094,52 @@ function PulseLinkedInSection({ matrix = [], selectedNews }) {
       </ChartCard>
 
       <ChartCard title="LinkedIn Open Rate — last editions">
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={openRateSeries} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={520}>
+          <ComposedChart
+            data={openRateSeries}
+            layout="vertical"
+            margin={{ top: 10, right: 24, left: 12, bottom: 20 }}
+          >
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="news" tickFormatter={(value) => `News ${value}`} />
-            <YAxis tickFormatter={(value) => formatPercent(value)} />
-            <Tooltip formatter={(value) => formatPercent(value)} labelFormatter={(label) => `News ${label}`} />
+            <XAxis
+              type="number"
+              domain={[0, 0.4]}
+              tickFormatter={(value) => formatPercent(value)}
+            />
+            <YAxis
+              yAxisId="news"
+              type="category"
+              dataKey="news"
+              width={72}
+              tickFormatter={(value) => `News ${value}`}
+              interval={0}
+            />
+            <YAxis
+              yAxisId="topic"
+              orientation="right"
+              type="category"
+              dataKey="topic"
+              width={460}
+              axisLine={false}
+              tickLine={false}
+              interval={0}
+              tick={<OpenRateTopicRightTick />}
+            />
+            <Tooltip content={<LinkedInOpenRateTooltip />} />
             <Legend />
-            <Line type="monotone" dataKey="openRate" name="Open Rate" stroke={BRAND_BLUE} strokeWidth={3} dot={{ r: 4, fill: "white", stroke: BRAND_BLUE, strokeWidth: 2 }} />
-            <Line type="monotone" dataKey="movingAvg" name="Moving average" stroke="#6B7280" strokeWidth={2} dot={false} />
-          </LineChart>
+            <Bar yAxisId="news" dataKey="openRate" name="Open Rate" fill={BRAND_BLUE} barSize={18} radius={[0, 6, 6, 0]} />
+            <Line
+              type="monotone"
+              yAxisId="news"
+              dataKey="movingAvg"
+              name="Moving average"
+              stroke="#6B7280"
+              strokeWidth={2}
+              dot={{ r: 3, fill: "white", stroke: "#6B7280", strokeWidth: 2 }}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
-        <div className="mt-2 text-xs text-slate-600">Blue line: Open Rate | Gray line: moving average of up to 12 editions</div>
+        <div className="mt-2 text-xs text-slate-600">Blue bars: Open Rate | Gray line: moving average of up to 12 editions | Full topic appears beside each bar.</div>
       </ChartCard>
     </section>
   );
