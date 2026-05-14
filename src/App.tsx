@@ -13,6 +13,7 @@ import {
   Tooltip,
   Legend,
   LabelList,
+  ReferenceDot,
   ResponsiveContainer,
 } from "recharts";
 
@@ -2022,6 +2023,18 @@ function PostPointLabel({ x, y, value, payload, viewBox }) {
   );
 }
 
+function PostReferenceLabel({ viewBox, value }) {
+  if (!viewBox || !value) return null;
+  const labelProps = {
+    x: viewBox.x,
+    y: viewBox.y,
+    value,
+    payload: { day: Number(viewBox.day || 0) },
+    viewBox: { x: 0, width: 9999 },
+  };
+  return <PostPointLabel {...labelProps} />;
+}
+
 function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatrix, month, year }) {
   const postCards = useMemo(() => buildPublishedPostCards(rows), [rows]);
   const postLabelsByDate = useMemo(() => buildPostLabelsByDate(rows), [rows]);
@@ -2044,9 +2057,17 @@ function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatr
             <YAxis tickFormatter={(value) => formatNumber(value)} />
             <Tooltip formatter={(value) => formatNumber(value)} labelFormatter={(label) => `Day ${label}`} />
             <Legend />
-            <Line type="monotone" dataKey="impressions" name="Organic impressions" stroke={BRAND_BLUE} strokeWidth={3} dot={{ r: 4, fill: "white", stroke: BRAND_BLUE, strokeWidth: 2 }} activeDot={{ r: 6 }}>
-              <LabelList dataKey="postLabel" content={<PostPointLabel />} />
-            </Line>
+            <Line type="monotone" dataKey="impressions" name="Organic impressions" stroke={BRAND_BLUE} strokeWidth={3} dot={{ r: 4, fill: "white", stroke: BRAND_BLUE, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            {dailyOrganicImpressions.filter((item) => item.postLabel).map((item) => (
+              <ReferenceDot
+                key={`post-label-${item.day}-${item.postLabel}`}
+                x={item.day}
+                y={item.impressions}
+                r={0}
+                ifOverflow="visible"
+                label={<PostReferenceLabel value={item.postLabel} />}
+              />
+            ))}
             <Line type="monotone" dataKey="clicks" name="Organic clicks" stroke="#6B7280" strokeWidth={2} dot={{ r: 3, fill: "white", stroke: "#6B7280", strokeWidth: 2 }} activeDot={{ r: 5 }} />
           </LineChart>
         </ResponsiveContainer>
