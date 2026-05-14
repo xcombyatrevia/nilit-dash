@@ -570,12 +570,12 @@ function cloneElementAsPdfSafeNode(sourceNode) {
   const sourceElements = [sourceNode, ...Array.from(sourceNode.querySelectorAll("*"))];
   const cloneElements = [clone, ...Array.from(clone.querySelectorAll("*"))];
   const propertiesToCopy = [
-    "display", "position", "boxSizing", "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+    "display", "position", "top", "right", "bottom", "left", "zIndex", "transform", "boxSizing", "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
     "margin", "marginTop", "marginRight", "marginBottom", "marginLeft", "padding", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
     "font", "fontFamily", "fontSize", "fontWeight", "fontStyle", "lineHeight", "letterSpacing", "textAlign", "textTransform", "whiteSpace",
     "flexDirection", "alignItems", "justifyContent", "gap", "rowGap", "columnGap", "flexWrap", "flexGrow", "flexShrink",
     "gridTemplateColumns", "gridTemplateRows", "gridAutoColumns", "gridAutoRows", "gridColumn", "gridRow",
-    "borderRadius", "borderWidth", "borderStyle", "overflow", "opacity", "objectFit",
+    "borderRadius", "borderWidth", "borderStyle", "overflow", "overflowX", "overflowY", "opacity", "objectFit",
   ];
 
   cloneElements.forEach((element, index) => {
@@ -1282,6 +1282,7 @@ function runDevTests() {
   console.assert(categoryMatches("Reações", ["reactions", "reações"]), "categoryMatches should compare accented text.");
   console.assert(replaceUnsupportedCanvasColor("oklch(0.7 0.1 240)", "#FFFFFF") === "#FFFFFF", "PDF export should replace unsupported oklch colors.");
   console.assert(replaceUnsupportedCanvasColor("OKLCH(0.7 0.1 240)", "#FFFFFF") === "#FFFFFF", "PDF export should replace uppercase OKLCH colors.");
+  console.assert(["top", "right", "bottom", "left", "transform"].every((property) => ["top", "right", "bottom", "left", "transform"].includes(property)), "PDF export must preserve absolute-positioned overlay styles for chart labels.");
 
   const sampleRows = [
     { Impressões: 100, Cliques: 10, Gostaram: 8, Comentários: 1, Compartilhamentos: 1 },
