@@ -1969,24 +1969,51 @@ function DashboardMetric({ metric, large = false }) {
   );
 }
 
-function PostPointLabel({ x, y, value, payload }) {
+function PostPointLabel({ x, y, value, payload, viewBox }) {
   if (!value || x === undefined || y === undefined) return null;
+
   const day = Number(payload?.day || 0);
   const lines = String(value).split("\n");
   const line1 = lines[0] || "";
   const line2 = lines[1] || "...";
-  const textAnchor = day < 15 ? "start" : day > 15 ? "end" : "middle";
-  const labelX = day < 15 ? x + 10 : day > 15 ? x - 10 : x;
+  const maxChars = Math.max(line1.length, line2.length);
+  const boxWidth = Math.max(76, maxChars * 6.2 + 18);
+  const boxHeight = 34;
+
+  const chartLeft = Number(viewBox?.x ?? 0);
+  const chartRight = Number((viewBox?.x ?? 0) + (viewBox?.width ?? 0));
+  const hasChartBounds = Number.isFinite(chartRight) && chartRight > chartLeft;
+
+  let textAnchor = day < 15 ? "start" : day > 15 ? "end" : "middle";
+  let labelX = day < 15 ? x + 12 : day > 15 ? x - 12 : x;
+
+  if (hasChartBounds) {
+    if (textAnchor === "start") {
+      labelX = Math.max(labelX, chartLeft + 20);
+      if (labelX + boxWidth > chartRight - 4) {
+        textAnchor = "end";
+        labelX = Math.min(chartRight - 8, x - 12);
+      }
+    } else if (textAnchor === "end") {
+      labelX = Math.min(labelX, chartRight - 20);
+      if (labelX - boxWidth < chartLeft + 4) {
+        textAnchor = "start";
+        labelX = Math.max(chartLeft + 8, x + 12);
+      }
+    } else {
+      labelX = Math.max(chartLeft + boxWidth / 2 + 4, Math.min(labelX, chartRight - boxWidth / 2 - 4));
+    }
+  }
+
   const verticalOffset = day % 2 === 0 ? 34 : 18;
   const labelY = y - verticalOffset;
-  const maxChars = Math.max(line1.length, line2.length);
-  const boxWidth = Math.max(72, maxChars * 6.2 + 16);
-  const boxHeight = 34;
-  const boxX = textAnchor === "start" ? labelX - 6 : textAnchor === "end" ? labelX - boxWidth + 6 : labelX - boxWidth / 2;
+  let boxX = textAnchor === "start" ? labelX - 7 : textAnchor === "end" ? labelX - boxWidth + 7 : labelX - boxWidth / 2;
+  if (hasChartBounds) boxX = Math.max(chartLeft + 2, Math.min(boxX, chartRight - boxWidth - 2));
   const boxY = labelY - 14;
+
   return (
     <g>
-      <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} rx={6} fill="white" stroke="#E5E7EB" opacity={0.94} />
+      <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} rx={6} fill="white" stroke="#E5E7EB" opacity={0.96} />
       <text x={labelX} y={labelY} textAnchor={textAnchor} fontSize={11} fontWeight={700} fill={DARK_GRAY}>
         <tspan x={labelX} dy="0">{line1}</tspan>
         <tspan x={labelX} dy="13">{line2}</tspan>
@@ -2011,7 +2038,7 @@ function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatr
       <div className="flex flex-col gap-1"><h2 className="text-2xl font-bold text-slate-950">Published Posts</h2></div>
       <ChartCard title="Organic impressions/clicks per day">
         <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={dailyOrganicImpressions} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+          <LineChart data={dailyOrganicImpressions} margin={{ top: 34, right: 42, left: 24, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" />
             <YAxis tickFormatter={(value) => formatNumber(value)} />
