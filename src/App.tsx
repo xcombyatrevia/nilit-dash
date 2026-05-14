@@ -14,6 +14,7 @@ import {
   Legend,
   LabelList,
   ReferenceDot,
+  Customized,
   ResponsiveContainer,
 } from "recharts";
 
@@ -2035,6 +2036,63 @@ function PostReferenceLabel({ viewBox, value }) {
   return <PostPointLabel {...labelProps} />;
 }
 
+function getScaleValue(scale, value) {
+  if (!scale) return null;
+  if (typeof scale === "function") return scale(value);
+  if (typeof scale.scale === "function") return scale.scale(value);
+  return null;
+}
+
+function PublishedPostHtmlLabels({ data }) {
+  const labeledPoints = (data || []).filter((item) => item.postLabel);
+  if (!labeledPoints.length) return null;
+
+  const maxImpressions = Math.max(600, ...data.map((item) => Number(item.impressions) || 0));
+  const yMax = Math.ceil(maxImpressions / 150) * 150;
+  const leftPercent = 6.8;
+  const rightPercent = 3.8;
+  const plotWidthPercent = 100 - leftPercent - rightPercent;
+  const topPx = 34;
+  const bottomPx = 56;
+  const chartHeightPx = 320;
+  const plotHeightPx = chartHeightPx - topPx - bottomPx;
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-visible">
+      {labeledPoints.map((item) => {
+        const day = Number(item.day);
+        const impressions = Number(item.impressions) || 0;
+        const xPercent = leftPercent + ((day - 1) / 29) * plotWidthPercent;
+        const yPx = topPx + (1 - impressions / yMax) * plotHeightPx;
+        const isLeftSide = day < 15;
+        const isRightSide = day > 15;
+        const textAlign = isLeftSide ? "left" : isRightSide ? "right" : "center";
+        const transform = isLeftSide ? "translate(8px, -50%)" : isRightSide ? "translate(calc(-100% - 8px), -50%)" : "translate(-50%, -50%)";
+        const topOffset = day % 2 === 0 ? -34 : -18;
+        const lines = String(item.postLabel).split("\n");
+
+        return (
+          <div
+            key={`published-post-html-label-${item.day}-${item.postLabel}`}
+            className="absolute rounded-md border border-slate-200 bg-white/95 px-2 py-1 text-[11px] font-bold leading-tight text-slate-900 shadow-sm"
+            style={{
+              left: `${xPercent}%`,
+              top: `${yPx + topOffset}px`,
+              transform,
+              textAlign,
+              minWidth: "76px",
+              maxWidth: "150px",
+            }}
+          >
+            <div>{lines[0] || ""}</div>
+            <div>{lines[1] || "..."}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatrix, month, year }) {
   const postCards = useMemo(() => buildPublishedPostCards(rows), [rows]);
   const postLabelsByDate = useMemo(() => buildPostLabelsByDate(rows), [rows]);
@@ -2050,27 +2108,20 @@ function PublishedPostsTab({ rows, dailyRows, generalMatrix, generalAnalysisMatr
     <section className="space-y-5">
       <div className="flex flex-col gap-1"><h2 className="text-2xl font-bold text-slate-950">Published Posts</h2></div>
       <ChartCard title="Organic impressions/clicks per day">
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={dailyOrganicImpressions} margin={{ top: 34, right: 42, left: 24, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="day" />
-            <YAxis tickFormatter={(value) => formatNumber(value)} />
-            <Tooltip formatter={(value) => formatNumber(value)} labelFormatter={(label) => `Day ${label}`} />
-            <Legend />
-            <Line type="monotone" dataKey="impressions" name="Organic impressions" stroke={BRAND_BLUE} strokeWidth={3} dot={{ r: 4, fill: "white", stroke: BRAND_BLUE, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-            {dailyOrganicImpressions.filter((item) => item.postLabel).map((item) => (
-              <ReferenceDot
-                key={`post-label-${item.day}-${item.postLabel}`}
-                x={item.day}
-                y={item.impressions}
-                r={0}
-                ifOverflow="visible"
-                label={<PostReferenceLabel value={item.postLabel} />}
-              />
-            ))}
-            <Line type="monotone" dataKey="clicks" name="Organic clicks" stroke="#6B7280" strokeWidth={2} dot={{ r: 3, fill: "white", stroke: "#6B7280", strokeWidth: 2 }} activeDot={{ r: 5 }} />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="relative h-[320px] w-full">
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={dailyOrganicImpressions} margin={{ top: 34, right: 42, left: 24, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="day" />
+              <YAxis tickFormatter={(value) => formatNumber(value)} />
+              <Tooltip formatter={(value) => formatNumber(value)} labelFormatter={(label) => `Day ${label}`} />
+              <Legend />
+              <Line type="monotone" dataKey="impressions" name="Organic impressions" stroke={BRAND_BLUE} strokeWidth={3} dot={{ r: 4, fill: "white", stroke: BRAND_BLUE, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="clicks" name="Organic clicks" stroke="#6B7280" strokeWidth={2} dot={{ r: 3, fill: "white", stroke: "#6B7280", strokeWidth: 2 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+          <PublishedPostHtmlLabels data={dailyOrganicImpressions} />
+        </div>
       </ChartCard>
       <PostCardsList posts={postCards} />
       <AnalysisBlock text={publishedPostsAnalysis || "Analysis has not been added for this period yet."} />
