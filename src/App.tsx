@@ -678,24 +678,26 @@ function getSafePdfSliceHeight({ sourceY, proposedSliceHeight, canvasHeight, avo
   const proposedBottom = Math.min(sourceY + proposedSliceHeight, canvasHeight);
   if (proposedBottom >= canvasHeight) return canvasHeight - sourceY;
 
-  const minimumSliceHeight = proposedSliceHeight * 0.45;
   const crossingRange = avoidRanges.find((range) => {
-    const startsBeforeBreak = range.top < proposedBottom;
-    const endsAfterBreak = range.bottom > proposedBottom;
-    const isRelevant = range.bottom > sourceY;
-    return startsBeforeBreak && endsAfterBreak && isRelevant;
+    const breakFallsInsideRange = range.top < proposedBottom && range.bottom > proposedBottom;
+    const rangeIsRelevant = range.bottom > sourceY;
+    return breakFallsInsideRange && rangeIsRelevant;
   });
 
   if (!crossingRange) return proposedSliceHeight;
 
   const breakBeforeElement = crossingRange.top - sourceY;
-  if (breakBeforeElement >= minimumSliceHeight) return Math.max(1, Math.floor(breakBeforeElement));
+  const elementAlreadyStartedOnThisPage = crossingRange.top <= sourceY + 4;
 
-  const breakAfterElement = crossingRange.bottom - sourceY;
-  if (breakAfterElement <= proposedSliceHeight * 1.15 && crossingRange.bottom < canvasHeight) {
-    return Math.max(1, Math.ceil(breakAfterElement));
+  // If the protected block has not started yet, always move the page break
+  // to before the block. This may leave white space at the bottom of the page,
+  // but it prevents cards/KPI rows from being sliced in half.
+  if (!elementAlreadyStartedOnThisPage && breakBeforeElement > 24) {
+    return Math.max(1, Math.floor(breakBeforeElement));
   }
 
+  // If the protected block is taller than a page or already started, we cannot
+  // keep it fully together. In that case, allow the normal page slice.
   return proposedSliceHeight;
 }
 
