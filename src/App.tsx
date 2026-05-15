@@ -1065,7 +1065,7 @@ function buildLinkedInEditionMetrics(matrix, selectedNews) {
       const normalizedLabel = normalizeText(label);
       const value = row[selectedColumnIndex];
       const previous = previousColumnIndex >= 0 ? row[previousColumnIndex] : undefined;
-      if (!label || index === 0 || normalizedLabel === "news" || normalizedLabel === "analysis") return null;
+      if (!label || index === 0 || normalizedLabel === "news" || normalizedLabel === "analysis" || normalizedLabel === "topic") return null;
       if (value === undefined || value === null || value === "") return null;
       return {
         label,
