@@ -18,7 +18,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const DEFAULT_SPREADSHEET_ID = "17mXamIrhpbmZtdlmk4H9VNNhoqWPuype";
+const DEFAULT_SPREADSHEET_ID = "1ayOfdqx1bzzD2et_CPa8wFkR0Da39jp6";
 const POSTS_SHEET = "Posts brutos";
 const GENERAL_SHEET = "Dados gerais";
 const DAILY_SHEET = "Dados por dia";
