@@ -523,7 +523,8 @@ function parseNewsletterClickDate(value) {
   if (parsedDate) return parsedDate;
 
   const raw = String(value || "").trim();
-  const dateTimePattern = new RegExp("^([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})[ ]+([0-9]{1,2}):([0-9]{2})[ ]*(am|pm)?$", "i");
+
+  const dateTimePattern = /^([0-9]{1,2})\/([0-9]{1,2})\/([0-9]{4})\s+([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\s*(am|pm)?$/i;
   const match = raw.match(dateTimePattern);
   if (!match) return null;
 
@@ -532,12 +533,13 @@ function parseNewsletterClickDate(value) {
   const year = Number(match[3]);
   let hour = Number(match[4]);
   const minute = Number(match[5]);
-  const meridiem = String(match[6] || "").toLowerCase();
+  const second = Number(match[6] || 0);
+  const meridiem = String(match[7] || "").toLowerCase();
 
   if (meridiem === "pm" && hour < 12) hour += 12;
   if (meridiem === "am" && hour === 12) hour = 0;
 
-  return new Date(year, month - 1, day, hour, minute);
+  return new Date(year, month - 1, day, hour, minute, second);
 }
 
 function formatNumber(value) {
