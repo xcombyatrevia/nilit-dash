@@ -5,22 +5,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.6",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "recharts": "latest",
+    "autoprefixer": "latest",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "framer-motion": "latest",
     "html2canvas": "latest",
     "jspdf": "latest",
     "lucide-react": "latest",
-    "framer-motion": "latest",
-    "class-variance-authority": "latest",
-    "clsx": "latest",
+    "postcss": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "recharts": "latest",
     "tailwind-merge": "latest",
     "tailwindcss": "3.4.17",
-    "postcss": "latest",
-    "autoprefixer": "latest"
-  },
-  "devDependencies": {}
+    "typescript": "latest",
+    "vite": "latest"
+  }
 }
