@@ -1,6 +1,9 @@
+"use client";
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { createClient, type Session } from "@supabase/supabase-js";
 import {
   LineChart,
   Line,
@@ -40,6 +43,12 @@ const NILIT_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v17780
 const XCOM_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778017157/logoxcom_ws81he.jpg";
 const DEFAULT_POST_IMAGE_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778176710/imagem_geral_nilit_tnqez7.jpg";
 const DASHBOARD_COMPARE_KEYS = new Set(["reactions", "comments", "share", "impressions", "engagementRate"]);
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseAuth = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 const TABS = ["Dashboard", "Published Posts", "PULSE", "Next Steps"];
 
@@ -1410,7 +1419,7 @@ function runDevTests() {
   console.assert(typeof HistoricalCharts === "function", "HistoricalCharts should be defined before use.");
 }
 
-export default function App() {
+function DashboardApp() {
   const [activeTab, setActiveTab] = useState(() => {
     const storedTab = getStoredValue("nilit_active_tab", "Dashboard");
     if (storedTab === "PULSE E-mail") return "PULSE";
@@ -2584,5 +2593,238 @@ function ChartCard({ title, children }) {
       <div className="mb-4 flex items-center gap-2"><h3 className="text-lg font-bold text-slate-950">{title}</h3><Icon name="info" size={16} color="#94A3B8" /></div>
       {children}
     </div>
+  );
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [checkingSession, setCheckingSession] = useState(Boolean(supabaseAuth));
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!supabaseAuth) return;
+
+    supabaseAuth.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setCheckingSession(false);
+    });
+
+    const { data: listener } = supabaseAuth.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
+      setCheckingSession(false);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabaseAuth || submitting) return;
+
+    setSubmitting(true);
+    setMessage("");
+    const { error } = await supabaseAuth.auth.signInWithPassword({ email: email.trim(), password });
+    setSubmitting(false);
+
+    if (error) {
+      setMessage("E-mail ou senha incorretos.");
+    }
+  }
+
+  async function handlePasswordReset() {
+    if (!supabaseAuth || !email.trim() || submitting) {
+      setMessage("Informe seu e-mail para receber o link de recuperação.");
+      return;
+    }
+
+    setSubmitting(true);
+    const { error } = await supabaseAuth.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+    setSubmitting(false);
+    setMessage(error
+      ? "Não foi possível enviar o link. Tente novamente."
+      : "Se o e-mail estiver autorizado, você receberá um link de recuperação.");
+  }
+
+  async function handleNewPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabaseAuth || newPassword.length < 8 || submitting) {
+      setMessage("A nova senha deve ter pelo menos oito caracteres.");
+      return;
+    }
+
+    setSubmitting(true);
+    const { error } = await supabaseAuth.auth.updateUser({ password: newPassword });
+    setSubmitting(false);
+
+    if (error) {
+      setMessage("Não foi possível atualizar a senha. Solicite um novo link.");
+      return;
+    }
+
+    setMessage("");
+    setNewPassword("");
+    setPasswordRecovery(false);
+  }
+
+  if (!supabaseAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F6F8FB] px-6 py-12">
+        <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+          <NilitLogo />
+          <h1 className="mt-8 text-2xl font-black text-slate-950">Acesso em configuração</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            A autenticação está pronta para ser conectada ao projeto Supabase.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F6F8FB] text-sm font-semibold text-slate-600">
+        Verificando acesso...
+      </main>
+    );
+  }
+
+  if (passwordRecovery && session) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F6F8FB] px-6 py-12">
+        <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+          <NilitLogo />
+          <p className="mt-8 text-sm font-bold uppercase tracking-[0.22em] text-[#1B5ECE]">Recuperação de acesso</p>
+          <h1 className="mt-3 text-3xl font-black text-slate-950">Crie uma nova senha</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Use pelo menos oito caracteres.</p>
+          <form className="mt-8 space-y-5" onSubmit={handleNewPassword}>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-slate-800">Nova senha</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-[#1B5ECE] focus:ring-4 focus:ring-blue-100"
+                placeholder="Mínimo de 8 caracteres"
+              />
+            </label>
+            {message ? <p role="status" className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-slate-700">{message}</p> : null}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-[#1B5ECE] px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              {submitting ? "Salvando..." : "Salvar nova senha"}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="grid min-h-screen bg-[#F6F8FB] lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="hidden bg-[#1B5ECE] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+          <NilitLogo />
+          <div className="max-w-xl">
+            <p className="text-sm font-bold uppercase tracking-[0.24em] text-blue-100">NILIT</p>
+            <h1 className="mt-5 text-5xl font-black leading-tight">Communication Results</h1>
+            <p className="mt-5 max-w-lg text-lg leading-8 text-blue-100">
+              Acesso reservado ao acompanhamento de resultados de comunicação.
+            </p>
+          </div>
+          <AgencyBrand />
+        </section>
+
+        <section className="flex items-center justify-center px-6 py-12">
+          <div className="w-full max-w-md">
+            <div className="mb-10 lg:hidden"><NilitLogo /></div>
+            <p className="text-sm font-bold uppercase tracking-[0.22em] text-[#1B5ECE]">Área restrita</p>
+            <h2 className="mt-3 text-3xl font-black text-slate-950">Acesse o dashboard</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Use o e-mail e a senha fornecidos pela equipe responsável.
+            </p>
+
+            <form className="mt-8 space-y-5" onSubmit={handleLogin}>
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-800">E-mail</span>
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-[#1B5ECE] focus:ring-4 focus:ring-blue-100"
+                  placeholder="nome@empresa.com"
+                />
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-800">Senha</span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-[#1B5ECE] focus:ring-4 focus:ring-blue-100"
+                  placeholder="Sua senha"
+                />
+              </label>
+
+              {message ? <p role="status" className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-slate-700">{message}</p> : null}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full rounded-xl bg-[#1B5ECE] px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitting ? "Aguarde..." : "Entrar"}
+              </button>
+              <button
+                type="button"
+                onClick={handlePasswordReset}
+                className="w-full text-sm font-bold text-[#1B5ECE] hover:underline"
+              >
+                Esqueci minha senha
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <>
+      <div className="fixed bottom-5 right-5 z-50 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+        <button
+          type="button"
+          onClick={() => supabaseAuth.auth.signOut()}
+          className="rounded-lg px-4 py-2 text-sm font-bold text-[#1B5ECE] transition hover:bg-blue-50"
+        >
+          Sair
+        </button>
+      </div>
+      {children}
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthGate>
+      <DashboardApp />
+    </AuthGate>
   );
 }
