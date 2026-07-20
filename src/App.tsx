@@ -92,7 +92,7 @@ const POST_FIELDS = {
   engagementRate: ["Taxa de engajamento", "Engagement rate", "de engajam", "engajamento"],
   image: ["Imagens", "Imagem", "Image", "Post image"],
   analysis: ["Analises", "Análises", "Analise", "Análise", "Analysis"],
-};
+}; 
 
 const NEWS_FIELDS = {
   news: ["News"],
