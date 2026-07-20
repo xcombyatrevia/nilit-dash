@@ -40,7 +40,7 @@ const BRAND_BLUE = "#1B5ECE";
 const DARK_GRAY = "#111827";
 const CREAM = "#FFF1D6";
 const NILIT_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778015070/logonilit_ep4jwy.jpg";
-const XCOM_LOGO_URL = "https://github.com/xcombyatrevia/nilit-dash/blob/main/public/assets/xcom_by_atrevia_branco.png";
+const XCOM_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778017157/logoxcom_ws81he.jpg";
 const DEFAULT_POST_IMAGE_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778176710/imagem_geral_nilit_tnqez7.jpg";
 const DASHBOARD_COMPARE_KEYS = new Set(["reactions", "comments", "share", "impressions", "engagementRate"]);
 
