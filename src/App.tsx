@@ -41,6 +41,7 @@ const DARK_GRAY = "#111827";
 const CREAM = "#FFF1D6";
 const NILIT_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778015070/logonilit_ep4jwy.jpg";
 const XCOM_LOGO_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778017157/logoxcom_ws81he.jpg";
+const XCOM_WHITE_LOGO_URL = "/assets/xcom-by-atrevia-branco.png";
 const DEFAULT_POST_IMAGE_URL = "https://res.cloudinary.com/daa3hsnkh/image/upload/v1778176710/imagem_geral_nilit_tnqez7.jpg";
 const DASHBOARD_COMPARE_KEYS = new Set(["reactions", "comments", "share", "impressions", "engagementRate"]);
 
@@ -152,14 +153,30 @@ function NilitLogo() {
   );
 }
 
-function AgencyBrand() {
+function AgencyBrand({ inverted = false }) {
   return (
     <div className="flex items-center justify-end gap-3 text-right">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Powered by</span>
-      <img src={XCOM_LOGO_URL} alt="XCOM Comunicação e Marketing" className="h-10 w-auto object-contain" />
+      <span
+        className={`text-xs font-semibold uppercase tracking-wide ${
+          inverted ? "text-blue-100" : "text-slate-400"
+        }`}
+      >
+        Powered by
+      </span>
+
+      <img
+        src={inverted ? XCOM_WHITE_LOGO_URL : XCOM_LOGO_URL}
+        alt="XCOM by Atrevia"
+        className={
+          inverted
+            ? "h-8 w-auto object-contain"
+            : "h-10 w-auto object-contain"
+        }
+      />
     </div>
   );
 }
+
 
 function LastUpdateBar({ lastUpdate, onRefresh }) {
   return (
@@ -2744,7 +2761,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
               Acesso reservado ao acompanhamento de resultados de comunicação.
             </p>
           </div>
-          <AgencyBrand />
+          <AgencyBrand inverted />
         </section>
 
         <section className="flex items-center justify-center px-6 py-12">
